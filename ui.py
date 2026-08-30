@@ -22,12 +22,16 @@ class JobQualificationApp:
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
     def _build_widgets(self) -> None:
+        self._position_values = self.database.get_positions()
+        self._category_values = self.database.get_categories()
+        self._item_name_values = self.database.get_item_names()
+
         form = ttk.LabelFrame(self.root, text="Job")
         form.pack(fill="x", padx=12, pady=12)
 
         self.company_name = self._add_field(form, "Company name", 0)
-        self.position = self._add_field(form, "Position", 1)
-        self.min_exp = self._add_field(form, "Min experience (years)", 2)
+        self.position = self._add_combo_field(form, "Position", 1, self._position_values)
+        self.min_exp = self._add_combo_field(form, "Min experience (years)", 2, [str(value) for value in range(0, 21)])
         self.location = self._add_field(form, "Location", 3)
         self.sub_location = self._add_field(form, "Sub location", 4)
 
@@ -38,8 +42,8 @@ class JobQualificationApp:
 
         qualification_form = ttk.LabelFrame(self.root, text="Qualification")
         qualification_form.pack(fill="x", padx=12, pady=(0, 12))
-        self.category = self._add_field(qualification_form, "Category", 0)
-        self.item_name = self._add_field(qualification_form, "Item name", 1)
+        self.category = self._add_combo_field(qualification_form, "Category", 0, self._category_values)
+        self.item_name = self._add_combo_field(qualification_form, "Item name", 1, self._item_name_values)
         ttk.Button(qualification_form, text="Add to selected job", command=self._add_qualification).grid(
             row=2, column=1, sticky="e", padx=8, pady=8
         )
@@ -52,6 +56,12 @@ class JobQualificationApp:
         search_entry.pack(side="left", fill="x", expand=True, padx=8)
         search_entry.bind("<Return>", lambda _event: self._load_records())
         ttk.Button(search_frame, text="Search", command=self._load_records).pack(side="left")
+
+        self.category_filter_var = tk.StringVar(value="All categories")
+        self.category_filter = ttk.Combobox(search_frame, textvariable=self.category_filter_var, state="readonly", width=28)
+        self.category_filter.pack(side="left", padx=(0, 8))
+        self.category_filter.bind("<<ComboboxSelected>>", lambda _event: self._load_records())
+        self._refresh_category_filter_options()
 
         table_frame = ttk.Frame(self.root)
         table_frame.pack(fill="both", expand=True, padx=12, pady=12)
@@ -77,10 +87,37 @@ class JobQualificationApp:
         parent.columnconfigure(1, weight=1)
         return entry
 
+    @staticmethod
+    def _add_combo_field(parent: ttk.LabelFrame, label: str, row: int, values: list[str]) -> ttk.Combobox:
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=4)
+        combo = ttk.Combobox(parent, values=values, state="normal")
+        combo.grid(row=row, column=1, sticky="ew", padx=8, pady=4)
+        parent.columnconfigure(1, weight=1)
+        return combo
+
+    def _refresh_category_filter_options(self) -> None:
+        counts = self.database.category_counts()
+        options = ["All categories"]
+        for item in counts:
+            category = str(item["category"])
+            count = int(item["item_count"])
+            options.append(f"{category} ({count})")
+        self.category_filter.configure(values=options)
+        if self.category_filter_var.get() not in options:
+            self.category_filter_var.set("All categories")
+
+    def _selected_category_filter(self) -> str:
+        selected = self.category_filter_var.get()
+        if not selected or selected == "All categories":
+            return ""
+        if " (" in selected and selected.endswith(")"):
+            return selected.rsplit(" (", 1)[0]
+        return selected
+
     def _load_records(self) -> None:
         for item in self.table.get_children():
             self.table.delete(item)
-        for record in self.database.search(self.search_text.get()):
+        for record in self.database.search(self.search_text.get(), self._selected_category_filter()):
             self.table.insert("", "end", values=tuple(record[column] or "" for column in self.columns))
 
     def _delete_selected(self) -> None:
@@ -95,7 +132,10 @@ class JobQualificationApp:
 
     def _clear_form(self) -> None:
         for field in (self.company_name, self.position, self.min_exp, self.location, self.sub_location, self.category, self.item_name):
-            field.delete(0, tk.END)
+            if isinstance(field, ttk.Combobox):
+                field.set("")
+            else:
+                field.delete(0, tk.END)
 
     def _insert_job(self) -> None:
         try:
@@ -121,8 +161,15 @@ class JobQualificationApp:
         except ValueError as error:
             messagebox.showerror("Invalid qualification", str(error))
             return
-        self.category.delete(0, tk.END)
-        self.item_name.delete(0, tk.END)
+        self._position_values = self.database.get_positions()
+        self._category_values = self.database.get_categories()
+        self._item_name_values = self.database.get_item_names()
+        self.position.configure(values=self._position_values)
+        self.category.configure(values=self._category_values)
+        self.item_name.configure(values=self._item_name_values)
+        self._refresh_category_filter_options()
+        self.category.set("")
+        self.item_name.set("")
         self._load_records()
 
     def close(self) -> None:

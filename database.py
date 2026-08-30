@@ -114,24 +114,87 @@ class JobQualificationDatabase:
         cursor.close()
         self._connection.commit()
 
-    def search(self, query: str = "") -> list[dict[str, Any]]:
-        """Return records matching the query across the main text fields."""
-        search_term = f"%{query.strip()}%"
+    def get_positions(self) -> list[str]:
+        """Return all known job positions for dropdown suggestions."""
+        cursor = self._connection.cursor(dictionary=True)
+        cursor.execute("SELECT DISTINCT position FROM jobs WHERE position IS NOT NULL AND position != '' ORDER BY position")
+        rows = cursor.fetchall()
+        cursor.close()
+        return [row["position"] for row in rows if row["position"]]
+
+    def get_categories(self) -> list[str]:
+        """Return all existing qualification categories for dropdown suggestions."""
+        cursor = self._connection.cursor(dictionary=True)
+        cursor.execute("SELECT DISTINCT category FROM qualifications WHERE category IS NOT NULL AND category != '' ORDER BY category")
+        rows = cursor.fetchall()
+        cursor.close()
+        return [row["category"] for row in rows if row["category"]]
+
+    def get_item_names(self) -> list[str]:
+        """Return all existing qualification item names for dropdown suggestions."""
+        cursor = self._connection.cursor(dictionary=True)
+        cursor.execute("SELECT DISTINCT item_name FROM qualifications WHERE item_name IS NOT NULL AND item_name != '' ORDER BY item_name")
+        rows = cursor.fetchall()
+        cursor.close()
+        return [row["item_name"] for row in rows if row["item_name"]]
+
+    def category_counts(self) -> list[dict[str, Any]]:
+        """Return each category with the count of item names it contains."""
         cursor = self._connection.cursor(dictionary=True)
         cursor.execute(
             """
-                 SELECT j.job_id, j.company_name, j.position, j.min_exp, j.location,
-                     j.sub_location, j.date_note,
-                     GROUP_CONCAT(CONCAT(q.category, ': ', q.item_name) SEPARATOR '; ') AS qualifications
+            SELECT category, COUNT(item_name) AS item_count
+            FROM qualifications
+            WHERE category IS NOT NULL AND category != ''
+            GROUP BY category
+            ORDER BY category
+            """
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        return rows
+
+    def search(self, query: str = "", category: str = "") -> list[dict[str, Any]]:
+        """Return records matching the query and optional category filter."""
+        search_term = f"%{query.strip()}%"
+        query_conditions: list[str] = []
+        params: list[str] = []
+
+        if query.strip():
+            query_conditions.extend([
+                "j.position LIKE %s",
+                "j.company_name LIKE %s",
+                "j.location LIKE %s",
+                "j.sub_location LIKE %s",
+                "q.category LIKE %s",
+                "q.item_name LIKE %s",
+            ])
+            params.extend([search_term] * 6)
+
+        category_filter = category.strip() if category else ""
+        if category_filter:
+            params.append(category_filter)
+
+        sql = """
+             SELECT j.job_id, j.company_name, j.position, j.min_exp, j.location,
+                 j.sub_location, j.date_note,
+                 GROUP_CONCAT(CONCAT(q.category, ': ', q.item_name) SEPARATOR '; ') AS qualifications
             FROM jobs AS j
             LEFT JOIN qualifications AS q ON q.job_id = j.job_id
-            WHERE j.position LIKE %s OR j.company_name LIKE %s OR j.location LIKE %s
-               OR j.sub_location LIKE %s OR q.category LIKE %s OR q.item_name LIKE %s
-            GROUP BY j.job_id
-            ORDER BY j.job_id DESC
-            """,
-            (search_term, search_term, search_term, search_term, search_term, search_term),
-        )
+        """
+
+        where_clauses: list[str] = []
+        if query_conditions:
+            where_clauses.append("(" + " OR ".join(query_conditions) + ")")
+        if category_filter:
+            where_clauses.append("q.category = %s")
+
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+        sql += " GROUP BY j.job_id ORDER BY j.job_id DESC"
+
+        cursor = self._connection.cursor(dictionary=True)
+        cursor.execute(sql, tuple(params))
         rows = cursor.fetchall()
         cursor.close()
         return rows
@@ -144,6 +207,14 @@ class JobQualificationDatabase:
         deleted = cursor.rowcount > 0
         cursor.close()
         return deleted
+
+    def delete_all(self) -> None:
+        """Delete all jobs and qualifications to reset the database for tests or maintenance."""
+        cursor = self._connection.cursor()
+        cursor.execute("DELETE FROM qualifications")
+        cursor.execute("DELETE FROM jobs")
+        self._connection.commit()
+        cursor.close()
 
     def close(self) -> None:
         self._connection.close()

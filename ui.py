@@ -65,10 +65,10 @@ class JobQualificationApp:
 
         table_frame = ttk.Frame(self.root)
         table_frame.pack(fill="both", expand=True, padx=12, pady=12)
-        self.columns = ("job_id", "company_name", "position", "min_exp", "location", "sub_location", "date_note", "qualifications")
+        self.columns = ("company_name", "position", "min_exp",  "qualifications")
         self.table = ttk.Treeview(table_frame, columns=self.columns, show="headings", selectmode="browse")
-        headings = {"job_id": "Job ID", "company_name": "Company", "position": "Position", "min_exp": "Min exp.", "location": "Location", "sub_location": "Sub location", "date_note": "Date note", "qualifications": "Qualifications"}
-        widths = {"job_id": 75, "company_name": 150, "position": 150, "min_exp": 70, "location": 100, "sub_location": 100, "date_note": 100, "qualifications": 300}
+        headings = {"company_name": "Company", "position": "Position", "min_exp": "Min exp.", "date_note": "Date note", "qualifications": "Qualifications"}
+        widths = {"company_name": 150, "position": 150, "min_exp": 70,   "qualifications": 300}
         for column in self.columns:
             self.table.heading(column, text=headings[column])
             self.table.column(column, width=widths[column], anchor="w")

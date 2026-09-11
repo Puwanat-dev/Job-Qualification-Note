@@ -178,7 +178,7 @@ class JobQualificationDatabase:
         sql = """
              SELECT j.job_id, j.company_name, j.position, j.min_exp, j.location,
                  j.sub_location, j.date_note,
-                 GROUP_CONCAT(CONCAT(q.category, ': ', q.item_name) SEPARATOR '; ') AS qualifications
+                 GROUP_CONCAT(CONCAT(q.category, ':', q.item_name) SEPARATOR ' | ') AS qualifications
             FROM jobs AS j
             LEFT JOIN qualifications AS q ON q.job_id = j.job_id
         """
